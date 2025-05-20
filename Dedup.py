@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import os
 
-file_path = "path_to_your_data/optimized_results.xlsx"
+file_path = "path_to_data.xlsx"
 df = pd.read_excel(file_path)
 feature_df = df.iloc[:, 4:19].copy()
 num_rows = feature_df.shape[0]

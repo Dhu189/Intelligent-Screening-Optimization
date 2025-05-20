@@ -8,11 +8,11 @@ from sklearn.metrics import (
 import optuna
 import os
 
-data = pd.read_excel("your_dataset_path.xlsx").fillna(-1)
+data = pd.read_excel("dataset_path.xlsx").fillna(-1)
 target = data.iloc[:, 1].values
 features = data.iloc[:, 4:].values
 
-output_dir = "your_output_directory"
+output_dir = "output_directory"
 os.makedirs(output_dir, exist_ok=True)
 
 def tune_model_DL(n_trials):
