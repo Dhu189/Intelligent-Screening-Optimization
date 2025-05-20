@@ -1,39 +1,51 @@
 import numpy as np
 import pandas as pd
 from sklearn.neural_network import MLPRegressor
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error, median_absolute_error
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    r2_score, mean_squared_error, mean_absolute_error, median_absolute_error
+)
 import optuna
+import os
 
-file_path = "path_to_your_dataset.xlsx"
-data = pd.read_excel(file_path).fillna(-1)
-
-targets = data.iloc[:, :4].values
+data = pd.read_excel("your_dataset_path.xlsx").fillna(-1)
+target = data.iloc[:, 1].values
 features = data.iloc[:, 4:].values
-target_names = ['DC', 'DL', 'PS', 'TC']
 
-def tune_model(target_idx, n_trials=100):
-    target = targets[:, target_idx]
+output_dir = "your_output_directory"
+os.makedirs(output_dir, exist_ok=True)
 
+def tune_model_DL(n_trials):
     def objective(trial):
         hidden_layer_size = trial.suggest_int('hidden_layer_size', 50, 5000)
         activation = trial.suggest_categorical('activation', ['relu', 'tanh', 'logistic'])
         max_iter = trial.suggest_int('max_iter', 50, 5000)
         alpha = trial.suggest_loguniform('alpha', 1e-5, 1e-2)
 
-        model = MLPRegressor(hidden_layer_sizes=(hidden_layer_size,),
-                             activation=activation,
-                             max_iter=max_iter,
-                             alpha=alpha,
-                             random_state=42)
-        model.fit(features, target)
-        preds = model.predict(features)
+        X_train, X_test, y_train, y_test = train_test_split(
+            features, target, test_size=0.2, random_state=42
+        )
 
-        r2 = r2_score(target, preds)
-        mse = mean_squared_error(target, preds)
+        model = MLPRegressor(
+            hidden_layer_sizes=(hidden_layer_size,),
+            activation=activation,
+            max_iter=max_iter,
+            alpha=alpha,
+            early_stopping=True,
+            n_iter_no_change=10,
+            validation_fraction=0.1,
+            random_state=42
+        )
+
+        model.fit(X_train, y_train)
+        preds = model.predict(X_test)
+
+        r2 = r2_score(y_test, preds)
+        mse = mean_squared_error(y_test, preds)
         rmse = np.sqrt(mse)
-        mae = mean_absolute_error(target, preds)
-        medae = median_absolute_error(target, preds)
-        mre = np.mean(np.abs((target - preds) / (target + 1e-8)))
+        mae = mean_absolute_error(y_test, preds)
+        medae = median_absolute_error(y_test, preds)
+        mre = np.mean(np.abs((y_test - preds) / (y_test + 1e-8)))
         mape = mre * 100
 
         trial.set_user_attr('r2', r2)
@@ -44,46 +56,34 @@ def tune_model(target_idx, n_trials=100):
         trial.set_user_attr('mre', mre)
         trial.set_user_attr('mape', mape)
 
-        return -mse
+        return r2
 
     study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=n_trials)
+    study.optimize(objective, n_trials=n_trials, n_jobs=-1)
 
-    best = study.best_trial
+    best_trial = study.best_trial
+    best_params = best_trial.params
+
     return {
-        'params': best.params,
-        'r2': best.user_attrs['r2'],
-        'mse': best.user_attrs['mse'],
-        'rmse': best.user_attrs['rmse'],
-        'mae': best.user_attrs['mae'],
-        'medae': best.user_attrs['medae'],
-        'mre': best.user_attrs['mre'],
-        'mape': best.user_attrs['mape']
+        'Target': 'DL',
+        'Trials': n_trials,
+        'Best Hidden Layer Size': best_params['hidden_layer_size'],
+        'Best Activation': best_params['activation'],
+        'Best Max Iter': best_params['max_iter'],
+        'Best Alpha': best_params['alpha'],
+        'R2': best_trial.user_attrs['r2'],
+        'MSE': best_trial.user_attrs['mse'],
+        'RMSE': best_trial.user_attrs['rmse'],
+        'MAE': best_trial.user_attrs['mae'],
+        'MedAE': best_trial.user_attrs['medae'],
+        'MRE': best_trial.user_attrs['mre'],
+        'MAPE': best_trial.user_attrs['mape']
     }
 
-n_trials_list = [100]
-results = []
+search_trials_list = [100, 300, 500, 700, 900, 1200, 1500, 1700, 2000]
 
-for n_trials in n_trials_list:
-    print(f"Running with {n_trials} trials...")
-    for idx, name in enumerate(target_names):
-        result = tune_model(idx, n_trials)
-        results.append({
-            'Target': name,
-            'Trials': n_trials,
-            'Hidden Layer Size': result['params']['hidden_layer_size'],
-            'Activation': result['params']['activation'],
-            'Max Iter': result['params']['max_iter'],
-            'Alpha': result['params']['alpha'],
-            'R2': result['r2'],
-            'MSE': result['mse'],
-            'RMSE': result['rmse'],
-            'MAE': result['mae'],
-            'MedAE': result['medae'],
-            'MRE': result['mre'],
-            'MAPE': result['mape']
-        })
-
-df_results = pd.DataFrame(results)
-df_results.to_excel("model_best_results.xlsx", index=False)
-print("Best results saved to 'model_best_results.xlsx'.")
+for n_trials in search_trials_list:
+    result = tune_model_DL(n_trials)
+    df_result = pd.DataFrame([result])
+    output_file = os.path.join(output_dir, f"DL_model_results_trials_{n_trials}.xlsx")
+    df_result.to_excel(output_file, index=False)
